@@ -49,6 +49,7 @@ class BSInput:
     eta_cat2wh = 0.975
     E_batmax = 500
     P_catmax = 1200
+    starting_percentage = 0.6
 class BSOutput:
     E_catmax = []
     E_catacc = []
@@ -56,7 +57,6 @@ class BSOutput:
     E_battacc = []
     E_bataux = []
     E_batt_acc = []
-    E_bataux = []
     E_bat = []
     E_batrec = []
     E_chmax = []
@@ -69,8 +69,6 @@ class BSOutput:
 def soc_calc(delta_t_standing,delta_t_driving,E_whacc,E_whrec,E_hvac,E_auxtr,under_catenary):
     for i in range(0,len(delta_t_driving)):
 
-        #Arbeiten mit append oder vorher Arrays mit bestimmter Länge initialisieren?
-        #Boundary Conition 0
         if under_catenary[i]:
             #STEP A1 --> Standing und Driving miteinbezogen!
             BSOutput.E_catmax.append(((BSInput.P_catmax * delta_t_driving[i]) / 3600) + ((BSInput.P_catmax * delta_t_standing[i]) / 3600))
@@ -78,21 +76,26 @@ def soc_calc(delta_t_standing,delta_t_driving,E_whacc,E_whrec,E_hvac,E_auxtr,und
             temp_E_catmax_standing = (BSInput.P_catmax * delta_t_standing[i]) / 3600
             #STEP A2
             BSOutput.E_catacc.append(min(E_whacc[i]/BSInput.eta_cat2acc,BSOutput.E_catmax[i]))
-            #STEP A3 --> IF DRIVING --> HIER NOCH IF BEDINGUNG
+            #STEP A3 --> IF DRIVING
             if BSOutput.E_catacc[i] < temp_E_catmax_driving:
                 BSOutput.E_cataux.append(min((E_auxtr[i]+E_hvac[i])/BSInput.eta_cat2aux,temp_E_catmax_driving-BSOutput.E_catacc[i]))
             else:
                 BSOutput.E_cataux.append(0)
-            #STEP A4 --> IF STANDING --> HIER NOCH IF BEDINGUNG
-            BSOutput.E_cataux[i] = BSOutput.E_cataux[i] + min((E_hvac[i]/BSInput.eta_cat2aux),temp_E_catmax_standing)
+            temp_E_cataux_driving = BSOutput.E_cataux[i]
+            #STEP A4 --> IF STANDING
+            temp_E_cataux_standing = min((E_hvac[i]/BSInput.eta_cat2aux),temp_E_catmax_standing)
+            BSOutput.E_cataux[i] = BSOutput.E_cataux[i] + temp_E_cataux_standing
             #STEP A5
             BSOutput.E_battacc.append((E_whacc[i]-BSInput.eta_cat2wh*BSOutput.E_catacc[i])*(1/BSInput.eta_bat2acc))
-            if not delta_t_standing:
+
+            if not temp_E_cataux_standing:
             #STEP A6 --> If driving --> Bedingung einfügen
-                BSOutput.E_bataux.append((E_auxtr[i]+E_hvac[i]-BSInput.eta_cat2aux * BSOutput.E_cataux_driving[i])*(1/BSInput.eta_bat2aux))
+                BSOutput.E_bataux.append((E_auxtr[i]+E_hvac[i]-BSInput.eta_cat2aux * temp_E_cataux_driving)*(1/BSInput.eta_bat2aux))
             else:
+                BSOutput.E_bataux.append(0)
+            if not temp_E_cataux_driving:
             #STEP A7 --> If standing --> Bedingung einfügen
-                BSOutput.E_bataux.append((E_hvac[i]-BSInput.eta_cat2aux * BSOutput.E_cataux[i]) * (1/BSInput.eta_bat2aux))
+                BSOutput.E_bataux[i] = BSOutput.E_bataux[i] + ((E_hvac[i]-BSInput.eta_cat2aux * temp_E_cataux_standing) * (1/BSInput.eta_bat2aux))
         else:
             BSOutput.E_catmax.append(0)
             BSOutput.E_catacc.append(0)
@@ -112,10 +115,9 @@ def soc_calc(delta_t_standing,delta_t_driving,E_whacc,E_whrec,E_hvac,E_auxtr,und
 
         if i == 0:
            #A10
-           BSOutput.E_bat.append(500*0.6)#BSInput.E_batmax)
+           BSOutput.E_bat.append(BSInput.E_batmax*BSInput.starting_percentage)
         else:
            # A14
-           # ACHTUNG WEGEN I-1! --> IF BEDINGUNG NOCH DEFINIEREN
            BSOutput.E_bat.append(min(BSOutput.E_bat[i - 1] - BSOutput.E_bataux[i] - BSOutput.E_battacc[i] + BSOutput.E_batrec[i] + BSOutput.E_chmax[i], BSInput.E_batmax))
         if i == 0:
             BSOutput.E_ch.append(0)
@@ -130,6 +132,7 @@ def soc_calc(delta_t_standing,delta_t_driving,E_whacc,E_whrec,E_hvac,E_auxtr,und
 
 read_excel()
 soc_calc(TrajectoryArrays.delta_t_standing,TrajectoryArrays.delta_t_driving,TrajectoryArrays.E_whacc,TrajectoryArrays.E_whrec,TrajectoryArrays.E_hvac,TrajectoryArrays.E_auxtr,TrajectoryArrays.under_catenary)
+
 
 plt.plot(TrajectoryArrays.position,BSOutput.SoC,"r-")
 plt.axvspan(81400, 83500, facecolor='b', alpha=0.2)
